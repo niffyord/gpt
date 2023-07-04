@@ -8,9 +8,11 @@ import eth from "../assets/img/eth.png";
 import { Button, Card, Spinner } from "react-bootstrap";
 import cloudBunnyContract from "../artifacts/CloudBunny.sol/CloudBunny.json";
 import nftStakingVaultContract from "../artifacts/NFTStakingVaults.sol/NFTStakingVaults.json";
+import nftWeightContract from "../artifacts/NFTWeight.sol/NFTWeight.json";
 import {
   cloudBunnyContractAddress,
   nftStakingVaultsContractAddress,
+  nftWeightContractAddress,
   networkDeployedTo,
 } from "../utils/contracts-config";
 import networksMap from "../utils/networksMap.json";
@@ -54,6 +56,8 @@ function NFTStakingPage() {
   const [stakedNFTsShdwVault, setStakedNFTsShdwVault] = useState(0);
   const [isLoading, setIsLoading] = useState(true); // Add loading state
   const [isLoadingBtn, setIsLoadingBtn] = useState(false);
+  const [stakedNFTsWithWeight, setStakedNFTsWithWeight] = useState([]);
+  const [isLoadingWeights, setIsLoadingWeights] = useState(false);
 
   const [userBunnies, setUserBunnies] = useState([]);
 
@@ -145,6 +149,53 @@ function NFTStakingPage() {
     return () => clearInterval(intervalId); // Clear interval when component unmounts
   }, [data, data.account, stakedNFTsEth, stakedNFTsShdw]);
 
+ 
+
+  const fetchWeight = async (tokenId) => {
+    const provider = new ethers.providers.Web3Provider(window.ethereum, "any");
+    const weightContract = new ethers.Contract(
+      nftWeightContractAddress,
+      nftWeightContract.abi,
+      provider
+    );
+
+    try {
+      const weight = await weightContract.getWeight(tokenId);
+      return ethers.utils.formatEther(weight);
+    } catch (err) {
+      console.error(`Failed to fetch weight for token ID ${tokenId}:`, err);
+      throw err;
+    }
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchWeights = async () => {
+      setIsLoadingWeights(true);
+      try {
+        const newStakedNFTs = await Promise.all(stakedNFTsShdw.map(async (nft) => {
+          const weight = await fetchWeight(nft.id);
+          return { ...nft, weight };
+        }));
+        if (isMounted) {
+          setStakedNFTsWithWeight(newStakedNFTs);
+          setIsLoadingWeights(false);
+        }
+      } catch (err) {
+        console.error("Failed to fetch weights:", err);
+        if (isMounted) {
+          setIsLoadingWeights(false);
+        }
+      }
+    };
+    fetchWeights();
+
+    return () => {
+      isMounted = false;  // component cleanup, preventing memory leak
+    };
+  }, [stakedNFTsShdw]);
+
+
   const fetchStakedNFTs = async (nftStaking) => {
     try {
       const stakedEth = await nftStaking.getStakedTokensInEthVault(
@@ -163,6 +214,8 @@ function NFTStakingPage() {
         cloudBunnyContract.abi,
         provider
       );
+
+      
 
       const fetchMetadata = async (tokenId) => {
         const metadata = await axios.get(
@@ -870,6 +923,29 @@ function NFTStakingPage() {
                         />
                       )}
                     </div>
+                    <div
+  className="weightBadge"
+  style={{
+    position: "absolute",
+    bottom: "5px",
+    left: "5px",
+    backgroundColor: "white",
+    borderRadius: "8px",
+    padding: "5px",
+    fontSize: "0.8rem",
+    fontWeight: "bold",
+  }}
+>
+  {nft.weight ? (
+    <span>Weight: {nft.weight}x</span>
+  ) : (
+    <Spinner
+      animation="border"
+      className="Spinner"
+      variant="info"
+    />
+  )}
+</div>
                   </div>
                 </Tilt>
 
